@@ -1,0 +1,3 @@
+faiss_index.index
+embeddings.npy
+models/
