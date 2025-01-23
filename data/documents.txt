@@ -1,0 +1,4 @@
+Machine learning is a subset of artificial intelligence.
+Deep learning uses neural networks to model complex patterns.
+Natural language processing enables machines to understand human language.
+Reinforcement learning is about training agents to make decisions.
