@@ -36,15 +36,23 @@ else:
     print("Model file found!")
 
 
-# Load documents
-with open("data/documents.txt", "r") as f:
-    documents = f.readlines()
+# Define the data folder relative to the project root
+data_folder = "data"
+
+# Get the list of files in the data folder
+documents = [os.path.join(data_folder, file_name)
+             for file_name in os.listdir(data_folder)
+             if file_name.endswith(".pdf") or file_name.endswith(".txt") or file_name.endswith(".docx")]
+
+
+absolute_documents = [os.path.abspath(doc) for doc in documents]
+
+# Print the list of documents
+print("Documents to process:", absolute_documents)
 
 # Load embeddings (generate them first if they don't exist)
-if not os.path.exists("faiss_index.index"):
-    retriever.add_documents(documents)
-    retriever.save()
-retriever.load()
+retriever.add_documents(absolute_documents)
+retriever.save()
 
 # Load LLaMA 2
 llm = LlamaCpp(
@@ -56,12 +64,7 @@ llm = LlamaCpp(
 
 
 def generate_response(query, context):
-    """
-    Generate a response using a local LLM.
-    :param query: The user's query.
-    :param context: Relevant documents as context.
-    :return: Generated response.
-    """
+
     # Define the prompt template
     prompt_template = PromptTemplate(
         input_variables=["context", "query"],
@@ -83,6 +86,7 @@ def home():
         # Retrieve relevant documents
         relevant_docs = retriever.search(query)
         context = "\n".join(relevant_docs)
+        print(context, "context:")
         # Generate a response using the local LLM
         response = generate_response(query, context)
         return render_template("index.html", query=query, response=response, context=context)
