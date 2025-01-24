@@ -4,17 +4,12 @@ import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 
+from app.chunk_text_semantic import chunk_text_rolling_window
 from app.text_extractor import extract_text_from_pdf
 
 
 class Retriever:
     def __init__(self, index_path="faiss_index.index", embedding_path="embeddings.npy", metadata_path="metadata.json"):
-        """
-        Initialize the Retriever.
-        :param index_path: Path to save/load the FAISS index.
-        :param embedding_path: Path to save/load the embeddings.
-        :param metadata_path: Path to save/load the metadata.
-        """
         self.model = SentenceTransformer('all-MiniLM-L6-v2')  # Embedding model
         self.index_path = index_path
         self.embedding_path = embedding_path
@@ -43,30 +38,25 @@ class Retriever:
             json.dump(metadata, file, indent=4)
 
     def add_documents(self, documents):
-        print("Inside add documents")
-
         new_documents = []
-
         for doc in documents:
-            print("Doc is", doc, self.processed_files)
             if True:
-                print("Processing file:", doc)
                 try:
                     # Extract text from the file
                     if doc.endswith(".pdf"):
                         text = extract_text_from_pdf(doc)
-                        print("Text from pdf:", text)
                     # elif doc.endswith(".docx"):
                     #     text = extract_text_from_docx(doc)
                     else:
                         with open(doc, "r") as file:
                             text = file.read()
 
-                    # Add the text to the new_documents list
-                    new_documents.append(text)
+                    # Perform semantic chunking
+                    chunks = chunk_text_rolling_window(text)
+                    new_documents.extend(chunks)  # Ensure chunks are strings
 
-                    # Mark the file as processed (only after successful extraction)
-                    self.processed_files[doc] = "2023-10-03T10:00:00"  # Update with the current timestamp
+                    # Mark the file as processed
+                    self.processed_files[doc] = "2023-10-03T10:00:00"
                 except Exception as e:
                     print(f"Error processing file {doc}: {e}")
 
@@ -77,14 +67,14 @@ class Retriever:
                 self.embeddings = new_embeddings
             else:
                 self.embeddings = np.vstack([self.embeddings, new_embeddings])
-            self.documents.extend(new_documents)
+            self.documents.extend(new_documents)  # Ensure self.documents contains strings
 
             # Update the FAISS index
             if self.index is None:
                 self.index = faiss.IndexFlatL2(self.embeddings.shape[1])  # L2 distance index
             self.index.add(np.array(new_embeddings))  # Add new embeddings to the index
 
-            # Save the metadata (only after successful processing)
+            # Save the metadata
             self._save_metadata()
         else:
             print("No new documents to process.")
@@ -107,7 +97,7 @@ class Retriever:
         self.embeddings = np.load(self.embedding_path)
         print(f"Loaded index from {self.index_path} and embeddings from {self.embedding_path}")
 
-    def search(self, query, k=5):
+    def search(self, query, k=10):
         if self.index is None:
             raise ValueError("Index not loaded. Call `load()` first.")
         # Generate embedding for the query
