@@ -1,3 +1,4 @@
 faiss_index.index
 embeddings.npy
 models/
+app/__pycache__/

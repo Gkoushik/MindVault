@@ -1,5 +1,6 @@
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, redirect, url_for
 from app.retriever import Retriever
+from werkzeug.utils import secure_filename
 from langchain_community.llms import LlamaCpp
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
@@ -9,50 +10,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'data'
+app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
+
 retriever = Retriever()
 
-import os
-
-# Change to the project root directory
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(project_root)
 
-# Relative path to the model
 model_path = "models/llama-2-7b-chat.Q2_K.gguf"
-
-# Print the current working directory
-print(f"Current working directory: {os.getcwd()}")
-
-# Convert to absolute path
-absolute_path = os.path.abspath(model_path)
-
-# Print the absolute path
-print(f"Absolute path: {absolute_path}")
-
-# Verify the file exists
-if not os.path.exists(absolute_path):
-    raise FileNotFoundError(f"Model file not found at: {absolute_path}")
-else:
-    print("Model file found!")
-
-
-# Define the data folder relative to the project root
-data_folder = "data"
-
-# Get the list of files in the data folder
-documents = [os.path.join(data_folder, file_name)
-             for file_name in os.listdir(data_folder)
-             if file_name.endswith(".pdf") or file_name.endswith(".txt") or file_name.endswith(".docx")]
-
-
-absolute_documents = [os.path.abspath(doc) for doc in documents]
-
-# Print the list of documents
-print("Documents to process:", absolute_documents)
-
-# Load embeddings (generate them first if they don't exist)
-retriever.add_documents(absolute_documents)
-retriever.save()
 
 # Load LLaMA 2
 llm = LlamaCpp(
@@ -63,8 +29,11 @@ llm = LlamaCpp(
 )
 
 
-def generate_response(query, context):
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
+
+def generate_response(query, context):
     # Define the prompt template
     prompt_template = PromptTemplate(
         input_variables=["context", "query"],
@@ -79,8 +48,32 @@ def generate_response(query, context):
     return response.strip()
 
 
+# List to store uploaded file names
+uploaded_files = []
+
+
 @app.route("/", methods=["GET", "POST"])
 def home():
+    if request.method == "POST":
+        # Handle file upload
+        if 'file' not in request.files:
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            uploaded_files.append(filename)
+            retriever.add_documents([file_path])
+            return redirect(url_for('home'))
+
+    return render_template("index.html", uploaded_files=uploaded_files)
+
+
+@app.route("/search", methods=["POST"])
+def search():
     if request.method == "POST":
         query = request.form["query"]
         # Retrieve relevant documents
